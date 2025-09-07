@@ -45,7 +45,7 @@ const STREAMS = {
   "live:nasa": [
     {
       title: "NASA HLS",
-      url: "https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-Public/master.m3u8"
+      url: "https://methstreams1.live/boxing/"
     }
   ]
 };
