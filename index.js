@@ -32,7 +32,7 @@ async function scrapeCatalog() {
 
   try {
     // Example: scrape NASA TV listing page
-    const { data } = await axios.get("https://www.nasa.gov/multimedia/nasatv/");
+    const { data } = await axios.get("https://methstreams1.live/boxing/");
     const $ = cheerio.load(data);
 
     $("a").each((i, el) => {
