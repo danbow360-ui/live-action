@@ -1,88 +1,70 @@
 const http = require("http");
 const url = require("url");
-const axios = require("axios");
-const cheerio = require("cheerio");
-const NodeCache = require("node-cache");
+const cheerio = require("cheerio"); // <-- added cheerio
 
 const PORT = process.env.PORT || 7000;
-const cache = new NodeCache({ stdTTL: 3600 }); // 1 hour cache
 
 // Manifest
 const manifest = {
-  id: "com.example.scraper.live",
-  version: "1.0.0",
-  name: "Scraper Live Demo",
-  description: "Educational Stremio addon scraping public live streams",
+  id: "com.example.hardcoded.live",
+  version: "1.1.0",
+  name: "Hardcoded + Link Extractor Addon",
+  description: "Demo addon with hardcoded sources and <a> link parsing",
   resources: ["catalog", "stream"],
   types: ["tv"],
-  idPrefixes: ["scraper"],
+  idPrefixes: ["live"],
   catalogs: [
     {
       type: "tv",
-      id: "scraper.channels",
-      name: "Scraped Live Channels"
+      id: "live.channels",
+      name: "Live Channels"
     }
   ]
 };
 
-// Scrape a demo page listing channels
-async function scrapeCatalog() {
-  if (cache.has("catalog")) return cache.get("catalog");
-  const metas = [];
-
-  try {
-    // Example: scrape NASA TV listing page
-    const { data } = await axios.get("https://methstreams1.live/boxing/");
-    const $ = cheerio.load(data);
-
-    $("a").each((i, el) => {
-      const text = $(el).text().trim();
-      const href = $(el).attr("href");
-      if (text.includes("NASA TV")) {
-        metas.push({
-          id: "scraper:" + href,
-          type: "tv",
-          name: text,
-          description: "Scraped from nasa.gov"
-        });
-      }
-    });
-    cache.set("catalog", metas);
-  } catch (err) {
-    console.error("Catalog scrape failed:", err.message);
+// Catalog entries
+const metas = [
+  {
+    id: "live:nasa",
+    type: "tv",
+    name: "NASA TV",
+    poster: "https://www.nasa.gov/sites/default/files/thumbnails/image/nasa-logo-web-rgb.png",
+    description: "NASA public livestream"
+  },
+  {
+    id: "live:demo",
+    type: "tv",
+    name: "Demo HTML Parser",
+    poster: "https://upload.wikimedia.org/wikipedia/commons/6/6a/HTML5_logo_and_wordmark.svg",
+    description: "Extracts all <a> links from a sample HTML"
   }
+];
 
-  return metas;
-}
-
-// Scrape stream links for a given channel
-async function scrapeStreams(id) {
-  const cacheKey = "stream:" + id;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-  const streams = [];
-
-  try {
-    const pageUrl = id.replace("scraper:", "");
-    const { data } = await axios.get(pageUrl);
-    const $ = cheerio.load(data);
-
-    // Example: look for an HLS .m3u8 link
-    const m3u8 = $('a[href$=".m3u8"]').attr("href");
-    if (m3u8) {
-      streams.push({
-        title: "Live Stream",
-        url: m3u8
-      });
+// Hardcoded streams
+const STREAMS = {
+  "live:nasa": [
+    {
+      title: "NASA HLS",
+      url: "https://methstreams1.live/boxing/"
     }
-  } catch (err) {
-    console.error("Stream scrape failed:", err.message);
-  }
+  ]
+};
 
-  cache.set(cacheKey, streams);
-  return streams;
+// Example HTML snippet with <a> links (for demo purposes)
+const demoHTML = `
+<div class="video-list">
+  <a href="https://example.com/stream1.m3u8">Stream 1</a>
+  <a href="https://example.com/stream2.m3u8">Stream 2</a>
+</div>
+`;
+
+// Function to extract <a> links from HTML
+function extractLinksFromHTML(html) {
+  const $ = cheerio.load(html);
+  const links = $("a").map((i, el) => $(el).attr("href")).get();
+  return links.map(l => ({ title: "Extracted Link", url: l }));
 }
 
-// Helpers
 function sendJSON(res, obj) {
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
@@ -96,28 +78,35 @@ function notFound(res) {
   res.end(JSON.stringify({ err: "not found" }));
 }
 
-// Server
 const server = http.createServer(async (req, res) => {
   const { pathname } = url.parse(req.url, true);
 
   if (pathname === "/manifest.json") return sendJSON(res, manifest);
 
-  if (/^\/catalog\/tv\/scraper\.channels\.json$/.test(pathname)) {
-    const metas = await scrapeCatalog();
+  if (/^\\/catalog\\/tv\\/live\\.channels\\.json$/.test(pathname)) {
     return sendJSON(res, { metas });
   }
 
-  const streamMatch = pathname.match(/^\/stream\/tv\/([^/]+)\.json$/);
+  const streamMatch = pathname.match(/^\\/stream\\/tv\\/([^/]+)\\.json$/);
   if (streamMatch) {
     const id = decodeURIComponent(streamMatch[1]);
-    const streams = await scrapeStreams(id);
-    return sendJSON(res, { streams });
+
+    // Normal hardcoded streams
+    if (STREAMS[id]) {
+      return sendJSON(res, { streams: STREAMS[id] });
+    }
+
+    // Demo extractor: turn <a> tags into streams
+    if (id === "live:demo") {
+      const extracted = extractLinksFromHTML(demoHTML);
+      return sendJSON(res, { streams: extracted });
+    }
   }
 
   notFound(res);
 });
 
 server.listen(PORT, () => {
-  console.log(`Scraper addon running on :${PORT}`);
+  console.log(`Addon running on :${PORT}`);
   console.log(`Manifest: http://localhost:${PORT}/manifest.json`);
 });
